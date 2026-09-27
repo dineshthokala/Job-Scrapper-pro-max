@@ -23,16 +23,14 @@ SEARCH_KEYWORDS = [
     "Cross Platform Developer Flutter",
 ]
 
-# Relevant domain terms — job title must contain at least one of these
+# Relevant domain terms — job title must strictly relate to Flutter/Dart or Mobile
 RELEVANT_TITLE_TERMS = [
     "flutter", "dart", "mobile", "android", "ios",
-    "app developer", "app engineer", "application developer",
-    "software developer", "software engineer", "sde",
     "cross-platform", "cross platform",
-    "frontend", "front-end", "front end",
-    "full stack", "fullstack", "full-stack",
-    "developer", "engineer", "intern", "trainee",
+    "mobile app", "mobile application", "mobile developer", "mobile engineer",
+    "app developer", "app engineer",
 ]
+
 
 # Location for job search
 LOCATION = "Bengaluru, Karnataka, India"
@@ -89,6 +87,11 @@ BLACKLISTED_TITLE_KEYWORDS = [
     "l4", "l5", "l6", "l7",
     "sde 3", "sde3", "sde-3", "sde iii", "sde-iii",
     "sde 2", "sde2", "sde-2", "sde ii", "sde-ii",
+    "engineer ii", "engineer 2", "developer ii", "developer 2", "level 2", "level ii",
+    # Non-Flutter language stacks
+    "c++", "cpp", "java developer", "python developer", "golang", "ruby on rails", "rust developer",
+    ".net developer", "dotnet", "php developer", "angular",
+
     # Unrelated roles
     "content writer", "content writing", "copywriter", "article writer",
     "technical writer", "blog writer", "editor",

@@ -31,13 +31,20 @@ SOURCE_COLORS = {
 
 def _post_embed(embed: dict) -> bool:
     """POST a single embed to Discord, handling 429 rate-limit with one retry."""
+    url = (DISCORD_WEBHOOK_URL or "").strip().strip("\"'")
+    if not url:
+        print("  [WARN] DISCORD_WEBHOOK_URL is not set.")
+        return False
     try:
-        resp = requests.post(DISCORD_WEBHOOK_URL, json={"embeds": [embed]}, timeout=10)
+        resp = requests.post(url, json={"embeds": [embed]}, timeout=15)
         if resp.status_code == 429:
             delay = resp.json().get("retry_after", 5) if resp.text else 5
             time.sleep(delay)
-            resp = requests.post(DISCORD_WEBHOOK_URL, json={"embeds": [embed]}, timeout=10)
-        return resp.status_code in (200, 204)
+            resp = requests.post(url, json={"embeds": [embed]}, timeout=15)
+        if resp.status_code not in (200, 204):
+            print(f"  [ERROR] Discord webhook returned HTTP {resp.status_code}: {resp.text[:200]}")
+            return False
+        return True
     except requests.RequestException as e:
         print(f"  [ERROR] Discord POST failed: {e}")
         return False
@@ -45,45 +52,58 @@ def _post_embed(embed: dict) -> bool:
 
 def send_discord_notification(job):
     """Send a rich embed to Discord for a single job posting."""
-    source = job.get("source", "Unknown")
+    source = str(job.get("source") or "Unknown").strip()
     color = SOURCE_COLORS.get(source, 0x808080)
 
+    title = str(job.get("title") or "Flutter Role").strip()
+    company = str(job.get("company") or "Company").strip()
+    location = str(job.get("location") or "Bengaluru / Remote").strip() or "Bengaluru / Remote"
+    keyword = str(job.get("keyword") or "Flutter").strip() or "Flutter"
+    job_url = str(job.get("url") or "").strip()
+    if not job_url.startswith("http"):
+        job_url = "https://www.linkedin.com"
+
     embed = {
-        "title": job["title"],
-        "url": job["url"],
+        "title": title,
+        "url": job_url,
         "color": color,
         "fields": [
-            {"name": "Company", "value": job["company"], "inline": True},
-            {"name": "Location", "value": job["location"], "inline": True},
+            {"name": "Company", "value": company, "inline": True},
+            {"name": "Location", "value": location, "inline": True},
             {"name": "Source", "value": source, "inline": True},
-            {"name": "Keyword", "value": job["keyword"], "inline": True},
-            {"name": "Apply", "value": f"[View Job]({job['url']})"},
+            {"name": "Keyword", "value": keyword, "inline": True},
+            {"name": "Apply", "value": f"[View Job]({job_url})"},
         ],
-        "footer": {"text": f"Job ID: {job['job_id']}"},
+        "footer": {"text": f"Job ID: {job.get('job_id', '')}"},
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     return _post_embed(embed)
- 
- 
+
+
 def send_google_sheet_row(job) -> bool:
     """Send newly found job to Google Sheet via Google Apps Script Webhook."""
-    if not GOOGLE_SHEET_WEBHOOK_URL:
+    url = (GOOGLE_SHEET_WEBHOOK_URL or "").strip().strip("\"'")
+    if not url:
         return False
     try:
         payload = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "title": job.get("title", ""),
-            "company": job.get("company", ""),
-            "location": job.get("location", ""),
-            "source": job.get("source", ""),
-            "keyword": job.get("keyword", ""),
-            "url": job.get("url", ""),
-            "job_id": job.get("job_id", ""),
+            "title": str(job.get("title") or ""),
+            "company": str(job.get("company") or ""),
+            "location": str(job.get("location") or "Bengaluru / Remote"),
+            "source": str(job.get("source") or ""),
+            "keyword": str(job.get("keyword") or "Flutter"),
+            "url": str(job.get("url") or ""),
+            "job_id": str(job.get("job_id") or ""),
             "status": "New",
         }
-        resp = requests.post(GOOGLE_SHEET_WEBHOOK_URL, json=payload, timeout=10)
-        return resp.status_code in (200, 201, 302)
+        resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
+        if resp.status_code not in (200, 201, 302):
+            print(f"  [ERROR] Google Sheet returned HTTP {resp.status_code}: {resp.text[:200]}")
+            return False
+        return True
     except Exception as e:
-        print(f"  [ERROR] Google Sheet sync failed: {e}")
+        print(f"  [ERROR] Google Sheet sync exception: {e}")
         return False
+
 

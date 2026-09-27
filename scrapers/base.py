@@ -42,19 +42,25 @@ def get_session():
     return s
 
 
-def fetch_soup(url, session=None, timeout=20):
+def fetch_soup(url, session=None, timeout=15):
     """Fetch a URL and return a BeautifulSoup object, or None on error."""
     s = session or get_session()
     try:
         resp = s.get(url, timeout=timeout, allow_redirects=True)
         resp.raise_for_status()
         return BeautifulSoup(resp.text, "lxml")
+    except requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code == 403:
+            print(f"  [INFO] Cloudflare/Bot-shield blocked request (403), skipping {url[:45]}...")
+        else:
+            print(f"  [WARN] HTTP {e}")
+        return None
     except Exception as e:
         print(f"  [WARN] HTTP fetch failed: {e}")
         return None
 
 
-def fetch_json(url, session=None, timeout=20, params=None, headers=None):
+def fetch_json(url, session=None, timeout=15, params=None, headers=None):
     """Fetch JSON from a URL, return dict or None on error."""
     s = session or get_session()
     if headers:
@@ -65,9 +71,16 @@ def fetch_json(url, session=None, timeout=20, params=None, headers=None):
         resp = s.get(url, timeout=timeout, params=params, allow_redirects=True)
         resp.raise_for_status()
         return resp.json()
+    except requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code == 403:
+            print(f"  [INFO] Cloudflare/Bot-shield blocked JSON request (403), skipping {url[:45]}...")
+        else:
+            print(f"  [WARN] JSON HTTP {e}")
+        return None
     except Exception as e:
         print(f"  [WARN] JSON fetch failed: {e}")
         return None
+
 
 
 def post_json(url, payload, session=None, timeout=20):

@@ -49,3 +49,9 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 }
+
+function doGet(e) {
+  return ContentService.createTextOutput("Google Sheets Webhook Active")
+    .setMimeType(ContentService.MimeType.TEXT);
+}
+

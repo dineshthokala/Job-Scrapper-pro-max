@@ -116,7 +116,8 @@ def _make_instant_notifier(label: str):
     Thread-safe.
     """
     from database import upsert_job
-    from notifier import send_discord_notification
+    from notifier import send_discord_notification, send_google_sheet_row
+    from config import GOOGLE_SHEET_WEBHOOK_URL
 
     lock = threading.Lock()
     counter = {"found": 0, "new": 0}
@@ -134,6 +135,12 @@ def _make_instant_notifier(label: str):
                     _log(f"  [NOTIFY] Discord sent for {job['title']}")
                 else:
                     _log(f"  [WARN] Discord notify failed for {job['job_id']}")
+            if GOOGLE_SHEET_WEBHOOK_URL:
+                if send_google_sheet_row(job):
+                    _log(f"  [SHEETS] Google Sheet updated for {job['title']}")
+                else:
+                    _log(f"  [WARN] Google Sheet update failed for {job['job_id']}")
+
 
     def get_counts():
         with lock:

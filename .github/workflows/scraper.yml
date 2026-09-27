@@ -32,6 +32,7 @@ jobs:
       - name: Run Job Scraper
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
         run: |
           # Runs all 18 portals once and sends Discord alerts
           python main.py --once

@@ -7,6 +7,10 @@ load_dotenv()
 # Discord webhook URL
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 
+# Google Sheets Webhook URL (optional, for auto-syncing jobs to Google Sheets)
+GOOGLE_SHEET_WEBHOOK_URL = os.environ.get("GOOGLE_SHEET_WEBHOOK_URL", "")
+
+
 # ── Search settings ────────────────────────────────────────────────────
 SEARCH_KEYWORDS = [
     "Flutter Developer",

@@ -85,8 +85,30 @@ You can run the scraper in the cloud using **GitHub Actions**. It runs on GitHub
    - Select **Read and write permissions** and click **Save**.
 
 4. **That's it!**
-   - The scraper will now automatically run every 2 hours in the cloud.
+   - The scraper will automatically run every 2 hours in the cloud.
    - You can also manually trigger it anytime by going to the **Actions** tab on GitHub, clicking **24/7 Flutter Job Scraper**, and clicking **Run workflow**.
+
+---
+
+## Google Sheets Tracking (Auto-Sync)
+
+You can automatically send every newly discovered job to a **Google Sheet** so you can track your applications on your phone or laptop.
+
+### Setup (2 Minutes, No API Keys Needed):
+1. Create a new Google Sheet named **"Flutter Job Tracker"**.
+2. Click **Extensions** ➔ **Apps Script**.
+3. Delete any code and paste the code from [`google_apps_script.js`](google_apps_script.js).
+4. Click **Deploy** (top right) ➔ **New deployment**:
+   - Select type: **Web app**
+   - Execute as: **Me**
+   - Who has access: **Anyone**
+5. Click **Deploy**, authorize permissions, and copy the **Web app URL**.
+6. Add that URL:
+   - In `.env`: `GOOGLE_SHEET_WEBHOOK_URL=https://script.google.com/macros/s/.../exec`
+   - In GitHub Secrets: Add `GOOGLE_SHEET_WEBHOOK_URL` so cloud runs also update your sheet!
+
+Now, whenever a new Flutter job is scraped, a row is automatically added to your Google Sheet with the date, job title, company, source, and direct link!
+
 
 ---
 

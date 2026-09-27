@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import requests
 
-from config import DISCORD_WEBHOOK_URL
+from config import DISCORD_WEBHOOK_URL, GOOGLE_SHEET_WEBHOOK_URL
 
 SOURCE_COLORS = {
     "LinkedIn":     0x0A66C2,
@@ -63,3 +63,27 @@ def send_discord_notification(job):
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     return _post_embed(embed)
+ 
+ 
+def send_google_sheet_row(job) -> bool:
+    """Send newly found job to Google Sheet via Google Apps Script Webhook."""
+    if not GOOGLE_SHEET_WEBHOOK_URL:
+        return False
+    try:
+        payload = {
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "title": job.get("title", ""),
+            "company": job.get("company", ""),
+            "location": job.get("location", ""),
+            "source": job.get("source", ""),
+            "keyword": job.get("keyword", ""),
+            "url": job.get("url", ""),
+            "job_id": job.get("job_id", ""),
+            "status": "New",
+        }
+        resp = requests.post(GOOGLE_SHEET_WEBHOOK_URL, json=payload, timeout=10)
+        return resp.status_code in (200, 201, 302)
+    except Exception as e:
+        print(f"  [ERROR] Google Sheet sync failed: {e}")
+        return False
+

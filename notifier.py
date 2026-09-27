@@ -8,9 +8,24 @@ import requests
 from config import DISCORD_WEBHOOK_URL
 
 SOURCE_COLORS = {
-    "LinkedIn": 0x0A66C2,
-    "Naukri": 0x2D69F0,
-    "Internshala": 0x00A5EC,
+    "LinkedIn":     0x0A66C2,
+    "Naukri":       0x2D69F0,
+    "Internshala":  0x00A5EC,
+    "Indeed":       0x003A9B,
+    "Glassdoor":    0x0CAA41,
+    "Wellfound":    0x000000,
+    "YCombinator":  0xF26522,
+    "Instahyre":    0x5D3FD3,
+    "Cutshort":     0x6C63FF,
+    "Dice":         0xEB1C26,
+    "CareerJet":    0x1A73E8,
+    "ZipRecruiter": 0x25C764,
+    "HiringCafe":   0xF59E0B,
+    "Otta":         0x171717,
+    "Peerlist":     0x00AA45,
+    "Arc":          0x6E56CF,
+    "Unstop":       0x1E88E5,
+    "AccioJobs":    0x4F46E5,
 }
 
 

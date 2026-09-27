@@ -1,12 +1,16 @@
 """
-main.py — parallel scraping with instant per-job Discord notifications.
+main.py — parallel scraping with instant per-job Discord notifications
+and SQLite persistence for the web dashboard.
 
-Thread 1: LinkedIn
-Thread 2: Internshala → Naukri
+Thread 1: LinkedIn  (Selenium-based, slow)
+Thread 2: Internshala → Naukri  (Selenium-based)
+Thread 3: All HTTP-based scrapers (fast, no browser needed)
 
-Jobs are sent to Discord the moment they are found and verified as new.
+Jobs are saved to the database and sent to Discord the moment they are
+found and verified as new.
 """
 
+import collections
 import signal
 import sys
 import threading
@@ -14,105 +18,186 @@ from datetime import datetime
 
 from config import (
     DISCORD_WEBHOOK_URL,
+    ENABLE_ACCIOJOBS,
+    ENABLE_ARC,
+    ENABLE_CAREERJET,
+    ENABLE_CUTSHORT,
+    ENABLE_DICE,
+    ENABLE_GLASSDOOR,
+    ENABLE_HIRINGCAFE,
+    ENABLE_INDEED,
+    ENABLE_INSTAHYRE,
     ENABLE_INTERNSHALA,
     ENABLE_LINKEDIN,
     ENABLE_NAUKRI,
+    ENABLE_OTTA,
+    ENABLE_PEERLIST,
+    ENABLE_UNSTOP,
+    ENABLE_WELLFOUND,
+    ENABLE_YCOMBINATOR,
+    ENABLE_ZIPRECRUITER,
     RUN_INTERVAL,
     SEARCH_KEYWORDS,
 )
 
 _shutdown = threading.Event()
 
+# ── Thread-safe log buffer (consumed by the dashboard SSE endpoint) ────
+
+_log_buffer = collections.deque(maxlen=500)
+_log_lock = threading.Lock()
+_log_subscribers = []          # list of threading.Event objects
+
+
+def _log(msg: str):
+    """Print a message AND store it in the ring buffer for the dashboard."""
+    print(msg)
+    ts = datetime.now().strftime("%H:%M:%S")
+    entry = f"[{ts}] {msg}"
+    with _log_lock:
+        _log_buffer.append(entry)
+        for evt in _log_subscribers:
+            evt.set()
+
+
+def subscribe_logs():
+    """Return (event, buffer_ref) for SSE streaming."""
+    evt = threading.Event()
+    with _log_lock:
+        _log_subscribers.append(evt)
+    return evt, _log_buffer
+
+
+def unsubscribe_logs(evt):
+    with _log_lock:
+        if evt in _log_subscribers:
+            _log_subscribers.remove(evt)
+
+
+# ── Scraper status (exposed to the dashboard) ─────────────────────────
+
+_scrape_status = {
+    "state": "idle",            # idle | running | error
+    "last_run": None,           # ISO timestamp
+    "current_sources": [],
+}
+_status_lock = threading.Lock()
+
+
+def get_scrape_status():
+    with _status_lock:
+        return dict(_scrape_status)
+
+
+def _set_status(state, sources=None):
+    with _status_lock:
+        _scrape_status["state"] = state
+        if sources is not None:
+            _scrape_status["current_sources"] = sources
+        if state == "idle":
+            _scrape_status["last_run"] = datetime.now().isoformat()
+
+
+# ── Signal handling ────────────────────────────────────────────────────
 
 def _handle_sigint(sig, frame):
-    print("\n[INFO] Ctrl+C received — shutting down gracefully...")
+    _log("[INFO] Ctrl+C received — shutting down gracefully...")
     _shutdown.set()
 
 
 signal.signal(signal.SIGINT, _handle_sigint)
 
 
-def _make_instant_notifier(label: str, tracking_file: str):
-    """
-    Returns a callback: on_new_job(job) → notify Discord instantly + mark seen.
-    Thread-safe via internal lock.
-    """
-    from notifier import send_discord_notification
-    from tracker import load_seen_jobs, mark_jobs_seen
+# ── Job callback (DB + Discord) ───────────────────────────────────────
 
-    seen_jobs = load_seen_jobs(tracking_file)
-    seen_set = set(seen_jobs)
+def _make_instant_notifier(label: str):
+    """
+    Returns a callback: on_new_job(job) → save to DB, notify Discord if new.
+    Thread-safe.
+    """
+    from database import upsert_job
+    from notifier import send_discord_notification
+
     lock = threading.Lock()
+    counter = {"found": 0, "new": 0}
 
     def on_new_job(job: dict):
-        nonlocal seen_jobs, seen_set
-        job_id = job["job_id"]
         with lock:
-            if job_id in seen_set:
+            counter["found"] += 1
+            is_new = upsert_job(job)
+            if not is_new:
                 return
-            print(f"  [NOTIFY] {job['title']} at {job['company']} [{label}]")
-            if send_discord_notification(job):
-                seen_set.add(job_id)
-                seen_jobs = mark_jobs_seen([job], seen_jobs, tracking_file)
-            else:
-                print(f"  [WARN] Discord notify failed for {job_id}")
+            counter["new"] += 1
+            _log(f"  [NEW] {job['title']} at {job['company']} [{label}]")
+            if DISCORD_WEBHOOK_URL:
+                if send_discord_notification(job):
+                    _log(f"  [NOTIFY] Discord sent for {job['title']}")
+                else:
+                    _log(f"  [WARN] Discord notify failed for {job['job_id']}")
 
-    def reload():
-        nonlocal seen_jobs, seen_set
+    def get_counts():
         with lock:
-            seen_jobs = load_seen_jobs(tracking_file)
-            seen_set = set(seen_jobs)
+            return dict(counter)
 
-    on_new_job.reload = reload
+    def reset_counts():
+        with lock:
+            counter["found"] = 0
+            counter["new"] = 0
+
+    on_new_job.get_counts = get_counts
+    on_new_job.reset_counts = reset_counts
     return on_new_job
 
+
+# ── Scraper runners ───────────────────────────────────────────────────
 
 def _run_startup_sweep(li_notify):
     """One-time 24h LinkedIn sweep to catch jobs posted while offline."""
     if not ENABLE_LINKEDIN:
         return
-    print("\n--- [LinkedIn] Startup 24h sweep ---")
+    _log("--- [LinkedIn] Startup 24h sweep ---")
     try:
         from linkedin_scraper import startup_sweep
         startup_sweep(SEARCH_KEYWORDS, on_new_job=li_notify)
     except Exception as e:
-        print(f"[LinkedIn] Startup sweep ERROR: {e}")
+        _log(f"[LinkedIn] Startup sweep ERROR: {e}")
         from driver import reset_driver
         reset_driver()
 
 
-def _run_group1(li_notify):
-    """Thread 1: LinkedIn."""
-    if ENABLE_LINKEDIN:
-        print("\n--- [LinkedIn] (Thread 1) ---")
-        try:
-            from linkedin_scraper import scrape_all_keywords
-            scrape_all_keywords(SEARCH_KEYWORDS, on_new_job=li_notify)
-        except Exception as e:
-            print(f"[LinkedIn] ERROR: {e}")
-            from driver import reset_driver
-            reset_driver()
+def _run_linkedin(notify):
+    """Thread 1: LinkedIn (Selenium)."""
+    if not ENABLE_LINKEDIN:
+        return
+    _log("--- [LinkedIn] ---")
+    try:
+        from linkedin_scraper import scrape_all_keywords
+        scrape_all_keywords(SEARCH_KEYWORDS, on_new_job=notify)
+    except Exception as e:
+        _log(f"[LinkedIn] ERROR: {e}")
+        from driver import reset_driver
+        reset_driver()
 
 
-def _run_group2(oth_notify):
-    """Thread 2: Internshala → Naukri."""
+def _run_selenium_group(notify):
+    """Thread 2: Internshala → Naukri (Selenium)."""
     if ENABLE_INTERNSHALA:
-        print("\n--- [Internshala] (Thread 2) ---")
+        _log("--- [Internshala] ---")
         try:
             from internshala_scraper import scrape_all_keywords
-            scrape_all_keywords(SEARCH_KEYWORDS, on_new_job=oth_notify)
+            scrape_all_keywords(SEARCH_KEYWORDS, on_new_job=notify)
         except Exception as e:
-            print(f"[Internshala] ERROR: {e}")
+            _log(f"[Internshala] ERROR: {e}")
             from driver import reset_driver
             reset_driver()
 
     if ENABLE_NAUKRI:
-        print("\n--- [Naukri] (Thread 2) ---")
+        _log("--- [Naukri] ---")
         try:
             from naukri_scraper import scrape_all_keywords
-            scrape_all_keywords(SEARCH_KEYWORDS, on_new_job=oth_notify)
+            scrape_all_keywords(SEARCH_KEYWORDS, on_new_job=notify)
         except Exception as e:
-            print(f"[Naukri] ERROR: {e}")
+            _log(f"[Naukri] ERROR: {e}")
             from driver import reset_driver
             reset_driver()
 
@@ -120,54 +205,168 @@ def _run_group2(oth_notify):
     reset_driver()
 
 
+# Map of (config_flag, module_path, source_label) for all HTTP scrapers
+_HTTP_SCRAPERS = [
+    (ENABLE_INDEED,       "scrapers.indeed",       "Indeed"),
+    (ENABLE_CAREERJET,    "scrapers.careerjet",    "CareerJet"),
+    (ENABLE_ARC,          "scrapers.arc",          "Arc"),
+    (ENABLE_YCOMBINATOR,  "scrapers.ycombinator",  "YCombinator"),
+    (ENABLE_WELLFOUND,    "scrapers.wellfound",    "Wellfound"),
+    (ENABLE_INSTAHYRE,    "scrapers.instahyre",    "Instahyre"),
+    (ENABLE_GLASSDOOR,    "scrapers.glassdoor",    "Glassdoor"),
+    (ENABLE_CUTSHORT,     "scrapers.cutshort",     "Cutshort"),
+    (ENABLE_DICE,         "scrapers.dice",         "Dice"),
+    (ENABLE_ZIPRECRUITER, "scrapers.ziprecruiter", "ZipRecruiter"),
+    (ENABLE_HIRINGCAFE,   "scrapers.hiringcafe",   "HiringCafe"),
+    (ENABLE_OTTA,         "scrapers.otta",         "Otta"),
+    (ENABLE_PEERLIST,     "scrapers.peerlist",     "Peerlist"),
+    (ENABLE_UNSTOP,       "scrapers.unstop",       "Unstop"),
+    (ENABLE_ACCIOJOBS,    "scrapers.acciojobs",    "AccioJobs"),
+]
+
+
+def _run_http_scrapers(notify):
+    """Thread 3: All lightweight HTTP-based scrapers (no Selenium)."""
+    import importlib
+
+    for enabled, module_path, label in _HTTP_SCRAPERS:
+        if not enabled:
+            continue
+        _log(f"--- [{label}] ---")
+        try:
+            mod = importlib.import_module(module_path)
+            mod.scrape_all_keywords(SEARCH_KEYWORDS, on_new_job=notify)
+        except Exception as e:
+            _log(f"[{label}] ERROR: {e}")
+
+
+# ── Public scrape cycle (called by both the loop and the API) ─────────
+
+_scrape_lock = threading.Lock()
+
+
+def run_scrape_cycle(sources=None):
+    """
+    Run a single scrape cycle. Thread-safe (only one cycle at a time).
+    `sources` is an optional list like ["LinkedIn", "Naukri"] to limit.
+    Returns a summary dict.
+    """
+    from database import finish_scrape_run, log_scrape_run
+
+    if not _scrape_lock.acquire(blocking=False):
+        _log("[WARN] Scrape already in progress — skipping.")
+        return {"error": "already_running"}
+
+    try:
+        # Determine which sources to run
+        all_sources = []
+        if ENABLE_LINKEDIN:
+            all_sources.append("LinkedIn")
+        if ENABLE_INTERNSHALA:
+            all_sources.append("Internshala")
+        if ENABLE_NAUKRI:
+            all_sources.append("Naukri")
+        for enabled, _, label in _HTTP_SCRAPERS:
+            if enabled:
+                all_sources.append(label)
+
+        active = sources if sources else all_sources
+
+        _set_status("running", active)
+        run_id = log_scrape_run(", ".join(active))
+
+        li_notify = _make_instant_notifier("LinkedIn")
+        sel_notify = _make_instant_notifier("Selenium")
+        http_notify = _make_instant_notifier("HTTP")
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        _log(f"{'=' * 55}")
+        _log(f"[{now}] Scrape cycle — {len(active)} source(s)")
+        _log(f"{'=' * 55}")
+
+        threads = []
+
+        # Thread 1: LinkedIn
+        if "LinkedIn" in active:
+            t = threading.Thread(target=_run_linkedin, args=(li_notify,), name="LinkedIn", daemon=True)
+            threads.append(t)
+
+        # Thread 2: Selenium group (Internshala + Naukri)
+        sel_active = [s for s in active if s in ("Internshala", "Naukri")]
+        if sel_active:
+            t = threading.Thread(target=_run_selenium_group, args=(sel_notify,), name="Selenium", daemon=True)
+            threads.append(t)
+
+        # Thread 3: HTTP scrapers
+        http_active = [s for s in active if s not in ("LinkedIn", "Internshala", "Naukri")]
+        if http_active:
+            t = threading.Thread(target=_run_http_scrapers, args=(http_notify,), name="HTTP", daemon=True)
+            threads.append(t)
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Tally results
+        total_found = li_notify.get_counts()["found"] + sel_notify.get_counts()["found"] + http_notify.get_counts()["found"]
+        total_new = li_notify.get_counts()["new"] + sel_notify.get_counts()["new"] + http_notify.get_counts()["new"]
+
+        finish_scrape_run(run_id, total_found, total_new)
+        _set_status("idle")
+        _log(f"Cycle complete. Found {total_found} jobs, {total_new} new.")
+
+        return {"jobs_found": total_found, "new_jobs": total_new, "sources": active}
+
+    except Exception as e:
+        _set_status("error")
+        _log(f"[ERROR] Scrape cycle failed: {e}")
+        try:
+            finish_scrape_run(run_id, 0, 0, "error")
+        except Exception:
+            pass
+        return {"error": str(e)}
+    finally:
+        _scrape_lock.release()
+
+
+# ── Main loop ──────────────────────────────────────────────────────────
+
 def main():
+    from database import init_db
+    init_db()
+
     if not DISCORD_WEBHOOK_URL:
-        print("[ERROR] DISCORD_WEBHOOK_URL is not set. Check your .env file.")
-        sys.exit(1)
+        _log("[WARN] DISCORD_WEBHOOK_URL is not set — Discord notifications disabled.")
 
     once = "--once" in sys.argv
 
-    li_notify  = _make_instant_notifier("LinkedIn", "seen_jobs_linkedin.json")
-    oth_notify = _make_instant_notifier("Others",   "seen_jobs_others.json")
-
     # Startup sweep
     if not _shutdown.is_set():
-        print(f"\n{'=' * 55}")
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Running startup 24h sweep")
-        print("=" * 55)
+        _log(f"{'=' * 55}")
+        _log(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Running startup 24h sweep")
+        _log(f"{'=' * 55}")
+        li_notify = _make_instant_notifier("LinkedIn")
         _run_startup_sweep(li_notify)
 
     while not _shutdown.is_set():
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"\n{'=' * 55}")
-        print(f"[{now}] Starting scrape cycle (parallel)")
-        print("=" * 55)
-
-        li_notify.reload()
-        oth_notify.reload()
-
-        t1 = threading.Thread(target=_run_group1, args=(li_notify,), name="LinkedIn", daemon=True)
-        t2 = threading.Thread(target=_run_group2, args=(oth_notify,), name="Others",   daemon=True)
-        t1.start()
-        t2.start()
-        t1.join()
-        t2.join()
+        run_scrape_cycle()
 
         if _shutdown.is_set():
             break
         if once:
-            print("\nDone (--once mode).")
+            _log("Done (--once mode).")
             break
         if RUN_INTERVAL > 0:
-            print(f"\nCycle complete. Next run in {RUN_INTERVAL}s...")
+            _log(f"Next run in {RUN_INTERVAL}s...")
             _shutdown.wait(timeout=RUN_INTERVAL)
         else:
-            print("\nCycle complete. Starting next cycle immediately...")
+            _log("Starting next cycle immediately...")
 
-    print("[INFO] Cleaning up drivers...")
+    _log("[INFO] Cleaning up drivers...")
     from driver import close_all_drivers
     close_all_drivers()
-    print("[INFO] Shutdown complete.")
+    _log("[INFO] Shutdown complete.")
 
 
 if __name__ == "__main__":

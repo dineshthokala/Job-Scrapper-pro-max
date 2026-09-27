@@ -173,7 +173,11 @@ def parse_age_hours(text):
 
 # ── Job filters ────────────────────────────────────────────────────────
 
-VALID_LOCATIONS = ["bangalore", "bengaluru"]
+VALID_LOCATIONS = [
+    "bangalore", "bengaluru",
+    "remote", "work from home", "wfh", "anywhere", "hybrid",
+    "india",  # remote-india positions
+]
 
 
 def passes_filters(title, company, card_text=None, location=None):

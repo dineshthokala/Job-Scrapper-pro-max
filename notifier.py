@@ -26,7 +26,13 @@ SOURCE_COLORS = {
     "Arc":          0x6E56CF,
     "Unstop":       0x1E88E5,
     "AccioJobs":    0x4F46E5,
+    "OneRoadmap":   0x6366F1,
+    "Hirist":       0xFF5722,
+    "WeWorkRemotely": 0xEE3124,
+    "jobs.a16z":    0x1E293B,
+    "Foundit":      0x7C3AED,
 }
+
 
 
 def _post_embed(embed: dict) -> bool:

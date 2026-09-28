@@ -575,7 +575,13 @@ body::before {
 .source-badge.arc         { background: rgba(110,86,207,0.15);  color: #c4b5fd; }
 .source-badge.unstop      { background: rgba(30,136,229,0.15);  color: #60a5fa; }
 .source-badge.acciojobs   { background: rgba(79,70,229,0.15);   color: #a5b4fc; }
+.source-badge.oneroadmap     { background: rgba(99,102,241,0.15);  color: #818cf8; }
+.source-badge.hirist         { background: rgba(255,87,34,0.15);   color: #fb923c; }
+.source-badge.weworkremotely { background: rgba(238,49,36,0.15);   color: #f87171; }
+.source-badge.a16z           { background: rgba(30,41,59,0.3);     color: #cbd5e1; }
+.source-badge.foundit        { background: rgba(124,58,237,0.15);  color: #c084fc; }
 .source-badge.default     { background: rgba(100,116,139,0.15); color: #94a3b8; }
+
 
 
 /* ── Status select ─────────────────────────────────────────────────── */

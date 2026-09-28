@@ -13,9 +13,29 @@ let logLineCount = 0;
 const PER_PAGE = 20;
 const STATUS_OPTIONS = ["new", "saved", "applied", "interviewing", "rejected", "offer"];
 const SOURCE_COLORS = {
-    "LinkedIn":   "#0a66c2",
-    "Naukri":     "#2d69f0",
-    "Internshala":"#00a5ec",
+    "LinkedIn":       "#0a66c2",
+    "Naukri":         "#2d69f0",
+    "Internshala":    "#00a5ec",
+    "Instahyre":      "#10b981",
+    "HiringCafe":     "#f59e0b",
+    "YCombinator":    "#ff6600",
+    "Wellfound":      "#e11d48",
+    "Indeed":         "#2164f4",
+    "ZipRecruiter":   "#16a34a",
+    "Glassdoor":      "#0caa41",
+    "Cutshort":       "#6366f1",
+    "Dice":           "#dc2626",
+    "CareerJet":      "#0284c7",
+    "Otta":           "#8b5cf6",
+    "Peerlist":       "#00aa4f",
+    "Arc":            "#2563eb",
+    "Unstop":         "#1c4980",
+    "AccioJobs":      "#4f46e5",
+    "OneRoadmap":     "#3b82f6",
+    "Hirist":         "#0ea5e9",
+    "WeWorkRemotely": "#ef4444",
+    "jobs.a16z":      "#10b981",
+    "Foundit":        "#8b5cf6",
 };
 
 
@@ -533,7 +553,14 @@ function getSourceClass(source) {
         "arc": "arc",
         "unstop": "unstop",
         "acciojobs": "acciojobs",
+        "oneroadmap": "oneroadmap",
+        "hirist": "hirist",
+        "weworkremotely": "weworkremotely",
+        "jobs.a16z": "a16z",
+        "a16z": "a16z",
+        "foundit": "foundit",
     };
+
     return map[s] || "default";
 }
 

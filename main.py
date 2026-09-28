@@ -36,9 +36,15 @@ from config import (
     ENABLE_WELLFOUND,
     ENABLE_YCOMBINATOR,
     ENABLE_ZIPRECRUITER,
+    ENABLE_ONEROADMAP,
+    ENABLE_HIRIST,
+    ENABLE_WEWORKREMOTELY,
+    ENABLE_A16Z,
+    ENABLE_FOUNDIT,
     RUN_INTERVAL,
     SEARCH_KEYWORDS,
 )
+
 
 _shutdown = threading.Event()
 
@@ -208,27 +214,50 @@ def _run_selenium_group(notify):
             from driver import reset_driver
             reset_driver()
 
+    if ENABLE_HIRIST:
+        _log("--- [Hirist] ---")
+        try:
+            from scrapers.hirist import scrape_all_keywords
+            scrape_all_keywords(SEARCH_KEYWORDS, on_new_job=notify)
+        except Exception as e:
+            _log(f"[Hirist] ERROR: {e}")
+            from driver import reset_driver
+            reset_driver()
+
+    if ENABLE_FOUNDIT:
+        _log("--- [Foundit] ---")
+        try:
+            from scrapers.foundit import scrape_all_keywords
+            scrape_all_keywords(SEARCH_KEYWORDS, on_new_job=notify)
+        except Exception as e:
+            _log(f"[Foundit] ERROR: {e}")
+            from driver import reset_driver
+            reset_driver()
+
     from driver import reset_driver
     reset_driver()
 
 
 # Map of (config_flag, module_path, source_label) for all HTTP scrapers
 _HTTP_SCRAPERS = [
-    (ENABLE_INDEED,       "scrapers.indeed",       "Indeed"),
-    (ENABLE_CAREERJET,    "scrapers.careerjet",    "CareerJet"),
-    (ENABLE_ARC,          "scrapers.arc",          "Arc"),
-    (ENABLE_YCOMBINATOR,  "scrapers.ycombinator",  "YCombinator"),
-    (ENABLE_WELLFOUND,    "scrapers.wellfound",    "Wellfound"),
-    (ENABLE_INSTAHYRE,    "scrapers.instahyre",    "Instahyre"),
-    (ENABLE_GLASSDOOR,    "scrapers.glassdoor",    "Glassdoor"),
-    (ENABLE_CUTSHORT,     "scrapers.cutshort",     "Cutshort"),
-    (ENABLE_DICE,         "scrapers.dice",         "Dice"),
-    (ENABLE_ZIPRECRUITER, "scrapers.ziprecruiter", "ZipRecruiter"),
-    (ENABLE_HIRINGCAFE,   "scrapers.hiringcafe",   "HiringCafe"),
-    (ENABLE_OTTA,         "scrapers.otta",         "Otta"),
-    (ENABLE_PEERLIST,     "scrapers.peerlist",     "Peerlist"),
-    (ENABLE_UNSTOP,       "scrapers.unstop",       "Unstop"),
-    (ENABLE_ACCIOJOBS,    "scrapers.acciojobs",    "AccioJobs"),
+    (ENABLE_INDEED,         "scrapers.indeed",         "Indeed"),
+    (ENABLE_CAREERJET,      "scrapers.careerjet",      "CareerJet"),
+    (ENABLE_ARC,            "scrapers.arc",            "Arc"),
+    (ENABLE_YCOMBINATOR,    "scrapers.ycombinator",    "YCombinator"),
+    (ENABLE_WELLFOUND,      "scrapers.wellfound",      "Wellfound"),
+    (ENABLE_INSTAHYRE,      "scrapers.instahyre",      "Instahyre"),
+    (ENABLE_GLASSDOOR,      "scrapers.glassdoor",      "Glassdoor"),
+    (ENABLE_CUTSHORT,       "scrapers.cutshort",       "Cutshort"),
+    (ENABLE_DICE,           "scrapers.dice",           "Dice"),
+    (ENABLE_ZIPRECRUITER,   "scrapers.ziprecruiter",   "ZipRecruiter"),
+    (ENABLE_HIRINGCAFE,     "scrapers.hiringcafe",     "HiringCafe"),
+    (ENABLE_OTTA,           "scrapers.otta",           "Otta"),
+    (ENABLE_PEERLIST,       "scrapers.peerlist",       "Peerlist"),
+    (ENABLE_UNSTOP,         "scrapers.unstop",         "Unstop"),
+    (ENABLE_ACCIOJOBS,      "scrapers.acciojobs",      "AccioJobs"),
+    (ENABLE_ONEROADMAP,     "scrapers.oneroadmap",     "OneRoadmap"),
+    (ENABLE_WEWORKREMOTELY, "scrapers.weworkremotely", "WeWorkRemotely"),
+    (ENABLE_A16Z,           "scrapers.a16z",           "jobs.a16z"),
 ]
 
 
@@ -273,6 +302,10 @@ def run_scrape_cycle(sources=None):
             all_sources.append("Internshala")
         if ENABLE_NAUKRI:
             all_sources.append("Naukri")
+        if ENABLE_HIRIST:
+            all_sources.append("Hirist")
+        if ENABLE_FOUNDIT:
+            all_sources.append("Foundit")
         for enabled, _, label in _HTTP_SCRAPERS:
             if enabled:
                 all_sources.append(label)
@@ -298,17 +331,19 @@ def run_scrape_cycle(sources=None):
             t = threading.Thread(target=_run_linkedin, args=(li_notify,), name="LinkedIn", daemon=True)
             threads.append(t)
 
-        # Thread 2: Selenium group (Internshala + Naukri)
-        sel_active = [s for s in active if s in ("Internshala", "Naukri")]
+        # Thread 2: Selenium group (Internshala + Naukri + Hirist + Foundit)
+        sel_active = [s for s in active if s in ("Internshala", "Naukri", "Hirist", "Foundit")]
         if sel_active:
             t = threading.Thread(target=_run_selenium_group, args=(sel_notify,), name="Selenium", daemon=True)
             threads.append(t)
 
         # Thread 3: HTTP scrapers
-        http_active = [s for s in active if s not in ("LinkedIn", "Internshala", "Naukri")]
+        http_active = [s for s in active if s not in ("LinkedIn", "Internshala", "Naukri", "Hirist", "Foundit")]
         if http_active:
             t = threading.Thread(target=_run_http_scrapers, args=(http_notify,), name="HTTP", daemon=True)
             threads.append(t)
+
+
 
         for t in threads:
             t.start()

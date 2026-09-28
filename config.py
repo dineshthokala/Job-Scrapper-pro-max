@@ -126,6 +126,12 @@ ENABLE_PEERLIST = True
 ENABLE_ARC = True
 ENABLE_UNSTOP = True
 ENABLE_ACCIOJOBS = True
+ENABLE_ONEROADMAP = True
+ENABLE_HIRIST = True
+ENABLE_WEWORKREMOTELY = True
+ENABLE_A16Z = True
+ENABLE_FOUNDIT = True
+
 
 # ── Dashboard settings ─────────────────────────────────────────────────
 ENABLE_DASHBOARD = True

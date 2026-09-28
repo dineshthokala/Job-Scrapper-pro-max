@@ -36,6 +36,7 @@ const SOURCE_COLORS = {
     "WeWorkRemotely": "#ef4444",
     "jobs.a16z":      "#10b981",
     "Foundit":        "#8b5cf6",
+    "Jooble":         "#2196f3",
 };
 
 
@@ -559,6 +560,7 @@ function getSourceClass(source) {
         "jobs.a16z": "a16z",
         "a16z": "a16z",
         "foundit": "foundit",
+        "jooble": "jooble",
     };
 
     return map[s] || "default";

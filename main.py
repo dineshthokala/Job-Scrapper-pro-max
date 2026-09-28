@@ -41,6 +41,7 @@ from config import (
     ENABLE_WEWORKREMOTELY,
     ENABLE_A16Z,
     ENABLE_FOUNDIT,
+    ENABLE_JOOBLE,
     RUN_INTERVAL,
     SEARCH_KEYWORDS,
 )
@@ -258,6 +259,7 @@ _HTTP_SCRAPERS = [
     (ENABLE_ONEROADMAP,     "scrapers.oneroadmap",     "OneRoadmap"),
     (ENABLE_WEWORKREMOTELY, "scrapers.weworkremotely", "WeWorkRemotely"),
     (ENABLE_A16Z,           "scrapers.a16z",           "jobs.a16z"),
+    (ENABLE_JOOBLE,         "scrapers.jooble",         "Jooble"),
 ]
 
 

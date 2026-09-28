@@ -33,8 +33,9 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
+          JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}
         run: |
-          # Runs all 18 portals once and sends Discord alerts
+          # Runs all 24 portals once and sends Discord alerts
           python main.py --once
 
       - name: Save jobs database (prevent duplicates)

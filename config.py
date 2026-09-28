@@ -10,6 +10,9 @@ DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 # Google Sheets Webhook URL (optional, for auto-syncing jobs to Google Sheets)
 GOOGLE_SHEET_WEBHOOK_URL = os.environ.get("GOOGLE_SHEET_WEBHOOK_URL", "")
 
+# Jooble API key (free from https://jooble.org/api/about)
+JOOBLE_API_KEY = os.environ.get("JOOBLE_API_KEY", "")
+
 
 # ── Search settings ────────────────────────────────────────────────────
 SEARCH_KEYWORDS = [
@@ -131,6 +134,7 @@ ENABLE_HIRIST = True
 ENABLE_WEWORKREMOTELY = True
 ENABLE_A16Z = True
 ENABLE_FOUNDIT = True
+ENABLE_JOOBLE = True
 
 
 # ── Dashboard settings ─────────────────────────────────────────────────

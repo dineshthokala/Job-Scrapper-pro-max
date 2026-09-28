@@ -57,7 +57,7 @@ Yes. Because this script runs entirely on your local machine, the scraping proce
 
 ## 24/7 Cloud Hosting (100% Free, NO Credit Card Required!)
 
-You can run the scraper in the cloud using **GitHub Actions**. It runs on GitHub's cloud servers every 2 hours, requires **no credit card**, and sends Discord alerts straight to your phone.
+You can run the scraper in the cloud using **GitHub Actions**. It runs on GitHub's cloud servers every 3 hours, requires **no credit card**, and sends Discord alerts straight to your phone.
 
 ### Quick Setup:
 
@@ -85,7 +85,7 @@ You can run the scraper in the cloud using **GitHub Actions**. It runs on GitHub
    - Select **Read and write permissions** and click **Save**.
 
 4. **That's it!**
-   - The scraper will automatically run every 2 hours in the cloud.
+   - The scraper will automatically run every 3 hours in the cloud.
    - You can also manually trigger it anytime by going to the **Actions** tab on GitHub, clicking **24/7 Flutter Job Scraper**, and clicking **Run workflow**.
 
 ---

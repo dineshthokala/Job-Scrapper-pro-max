@@ -80,14 +80,7 @@ def _parse_jobs(data, keyword):
             title = re.sub(r"<[^>]+>", "", title).strip()
 
             job = make_job(
-                prefix="jb",
-                raw_id=jid,
-                title=title,
-                company=company,
-                location=location,
-                url=link,
-                keyword=keyword,
-                source="Jooble",
+                "jb", jid, title, company, location, link, keyword, "Jooble"
             )
             if job:
                 jobs.append(job)

@@ -2,8 +2,8 @@ name: 24/7 Flutter Job Scraper
 
 on:
   schedule:
-    # Runs every 3 hours (UTC)
-    - cron: "0 */3 * * *"
+    # Runs every 3 hours at an off-peak minute (17) to avoid GitHub Actions queue drops
+    - cron: "17 */3 * * *"
   # Allows you to manually trigger it anytime from GitHub Actions tab
   workflow_dispatch:
 

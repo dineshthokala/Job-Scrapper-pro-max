@@ -22,7 +22,7 @@ JOOBLE_API_KEY = os.environ.get("JOOBLE_API_KEY", "")
 _BASE_URL = "https://in.jooble.org/api"
 
 
-def _query_jooble(keyword, page=1):
+def _query_jooble(keyword, location="Bengaluru", page=1):
     """POST a search query to the Jooble API and return the raw JSON response."""
     if not JOOBLE_API_KEY:
         print("  [WARN] JOOBLE_API_KEY not set — skipping Jooble")
@@ -31,7 +31,7 @@ def _query_jooble(keyword, page=1):
     url = f"{_BASE_URL}/{JOOBLE_API_KEY}"
     payload = {
         "keywords": keyword,
-        "location": "Bengaluru",
+        "location": location,
         "page": page,
     }
 
@@ -53,7 +53,7 @@ def _query_jooble(keyword, page=1):
         return None
 
 
-def _parse_jobs(data, keyword):
+def _parse_jobs(data, keyword, is_remote=False):
     """Convert Jooble API response into our standard job dicts."""
     jobs = []
     if not data or "jobs" not in data:
@@ -63,9 +63,13 @@ def _parse_jobs(data, keyword):
         try:
             title = (item.get("title") or "").strip()
             company = (item.get("company") or "Jooble Employer").strip()
-            location = (item.get("location") or "Bengaluru").strip()
+            location = (item.get("location") or ("Remote" if is_remote else "Bengaluru")).strip()
             link = (item.get("link") or "").strip()
             jooble_id = item.get("id", "")
+
+            # If scraped from Remote query and not explicitly marked, tag as Remote
+            if is_remote and "remote" not in location.lower() and "wfh" not in location.lower():
+                location = f"{location} (Remote)"
 
             # Generate a stable job ID from the link or Jooble ID
             if jooble_id:
@@ -92,30 +96,33 @@ def _parse_jobs(data, keyword):
 
 
 def scrape_all_keywords(keywords, on_new_job=None):
-    """Scrape Jooble for all configured keywords."""
+    """Scrape Jooble for all configured keywords across Bengaluru and Remote."""
     if not JOOBLE_API_KEY:
         print("  [SKIP] Jooble — no API key configured (set JOOBLE_API_KEY)")
         return []
 
     all_jobs = []
+    locations = ["Bengaluru", "Remote"]
 
     for keyword in keywords:
-        data = _query_jooble(keyword, page=1)
-        if not data:
-            print(f"  {keyword}: 0 job(s) [Jooble]")
-            delay(1.0, 2.0)
-            continue
+        for loc in locations:
+            is_remote = (loc == "Remote")
+            data = _query_jooble(keyword, location=loc, page=1)
+            if not data:
+                print(f"  {keyword} ({loc}): 0 job(s) [Jooble]")
+                delay(1.0, 2.0)
+                continue
 
-        total = data.get("totalCount", 0)
-        jobs = _parse_jobs(data, keyword)
-        print(f"  {keyword}: {len(jobs)} job(s) from {total} total [Jooble]")
+            total = data.get("totalCount", 0)
+            jobs = _parse_jobs(data, keyword, is_remote=is_remote)
+            print(f"  {keyword} ({loc}): {len(jobs)} job(s) from {total} total [Jooble]")
 
-        for job in jobs:
-            if on_new_job:
-                on_new_job(job)
-            else:
-                all_jobs.append(job)
+            for job in jobs:
+                if on_new_job:
+                    on_new_job(job)
+                else:
+                    all_jobs.append(job)
 
-        delay(1.5, 3.0)
+            delay(1.5, 3.0)
 
     return all_jobs

@@ -135,6 +135,7 @@ ENABLE_WEWORKREMOTELY = True
 ENABLE_A16Z = True
 ENABLE_FOUNDIT = True
 ENABLE_JOOBLE = True
+ENABLE_OFFCAMPUSJOBDRIVES = True
 
 
 # ── Dashboard settings ─────────────────────────────────────────────────

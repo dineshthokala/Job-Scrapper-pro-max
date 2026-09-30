@@ -5,12 +5,15 @@ from bs4 import BeautifulSoup
 from driver import enforce_tab_limit, get_driver, passes_filters
 
 
-def _build_search_url(keyword):
+def _build_search_urls(keyword):
     slug = keyword.lower().replace(" ", "-")
-    return f"https://www.naukri.com/{slug}-jobs-in-bengaluru?experience=0&jobAge=1"
+    return [
+        f"https://www.naukri.com/{slug}-jobs-in-bengaluru?experience=0&jobAge=1",
+        f"https://www.naukri.com/remote-{slug}-jobs?experience=0&jobAge=1",
+    ]
 
 
-def _parse_job_cards(soup, keyword):
+def _parse_job_cards(soup, keyword, is_remote=False):
     jobs = []
     job_cards = soup.find_all("div", class_="srp-jobtuple-wrapper")
     if not job_cards:
@@ -30,7 +33,9 @@ def _parse_job_cards(soup, keyword):
             company = comp_el.get_text(strip=True) if comp_el else "Unknown Company"
 
             loc_el = card.find("span", class_="locWdth")
-            location = loc_el.get_text(strip=True) if loc_el else "Unknown Location"
+            location = loc_el.get_text(strip=True) if loc_el else ("Remote" if is_remote else "Bengaluru")
+            if is_remote and "remote" not in location.lower() and "wfh" not in location.lower():
+                location = f"{location} (Remote)"
 
             time_el = card.find("span", class_="job-post-day")
             card_text = time_el.get_text(strip=True) if time_el else ""
@@ -58,45 +63,38 @@ def _parse_job_cards(soup, keyword):
     return jobs
 
 
-def scrape_all_keywords(keywords, batch_size=2, on_new_job=None):
+def scrape_all_keywords(keywords, on_new_job=None):
     all_jobs = []
+    seen_ids = set()
     driver = get_driver()
 
-    for i in range(0, len(keywords), batch_size):
-        batch = keywords[i:i + batch_size]
+    for keyword in keywords:
+        urls = _build_search_urls(keyword)
+        kw_jobs = []
 
-        for j, keyword in enumerate(batch):
-            url = _build_search_url(keyword)
-            if j == 0:
-                driver.get(url)
-            else:
-                driver.switch_to.new_window('tab')
-                driver.get(url)
-
-        time.sleep(2)
-
-        for j, keyword in enumerate(batch):
+        for url in urls:
+            is_remote = "remote-" in url
             try:
-                driver.switch_to.window(driver.window_handles[j])
+                driver.get(url)
+                time.sleep(2)
                 for _ in range(3):
                     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                    time.sleep(0.5)
+                    time.sleep(0.4)
 
                 soup = BeautifulSoup(driver.page_source, "lxml")
-                jobs = _parse_job_cards(soup, keyword)
-                print(f"  {keyword}: {len(jobs)} job(s)")
-                for job in jobs:
-                    if on_new_job:
-                        on_new_job(job)
-                    else:
-                        all_jobs.append(job)
+                found = _parse_job_cards(soup, keyword, is_remote=is_remote)
+                for j in found:
+                    if j["job_id"] not in seen_ids:
+                        seen_ids.add(j["job_id"])
+                        kw_jobs.append(j)
+                        if on_new_job:
+                            on_new_job(j)
+                        else:
+                            all_jobs.append(j)
             except Exception as e:
-                print(f"  [ERROR] '{keyword}': {e}")
+                print(f"  [ERROR] Naukri '{keyword}' at {url}: {e}")
 
-        while len(driver.window_handles) > 1:
-            driver.switch_to.window(driver.window_handles[-1])
-            driver.close()
-        driver.switch_to.window(driver.window_handles[0])
+        print(f"  [Naukri] {keyword}: {len(kw_jobs)} job(s) (Bengaluru + Remote)")
         enforce_tab_limit(2)
 
-    return all_jobs  # empty when on_new_job is used
+    return all_jobs

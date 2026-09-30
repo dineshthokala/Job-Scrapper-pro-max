@@ -29,16 +29,24 @@ MAX_CONSECUTIVE_OLD = 3
 
 # ── URL building ───────────────────────────────────────────────────────
 
-def _build_search_url(keyword: str, time_filter: Optional[str] = None) -> str:
+def _build_search_urls(keyword: str, time_filter: Optional[str] = None) -> List[tuple]:
     tpr = time_filter or TIME_FILTER
-    params = [
+    base_params = [
         f"keywords={keyword.replace(' ', '%20')}",
-        f"location={LOCATION.replace(' ', '%20').replace(',', '%2C')}",
         f"f_TPR={tpr}",
     ]
     if EXPERIENCE_LEVELS:
-        params.append(f"f_E={'%2C'.join(EXPERIENCE_LEVELS)}")
-    return f"https://www.linkedin.com/jobs/search/?{'&'.join(params)}"
+        base_params.append(f"f_E={'%2C'.join(EXPERIENCE_LEVELS)}")
+
+    # 1) Bangalore search
+    blr_params = list(base_params) + [f"location={LOCATION.replace(' ', '%20').replace(',', '%2C')}"]
+    url_blr = f"https://www.linkedin.com/jobs/search/?{'&'.join(blr_params)}"
+
+    # 2) Remote search (f_WT=2 is LinkedIn's remote workplace filter)
+    remote_params = list(base_params) + ["location=India", "f_WT=2"]
+    url_remote = f"https://www.linkedin.com/jobs/search/?{'&'.join(remote_params)}"
+
+    return [(url_blr, False), (url_remote, True)]
 
 
 # ── Card parsing ───────────────────────────────────────────────────────
@@ -68,7 +76,7 @@ def _extract_job_id(url: str) -> Optional[str]:
     return None
 
 
-def _parse_job_cards(soup: BeautifulSoup, keyword: str) -> list[dict]:
+def _parse_job_cards(soup: BeautifulSoup, keyword: str, is_remote: bool = False) -> list[dict]:
     jobs = []
     # Try multiple card selectors (logged-in and guest HTML variants)
     job_cards = soup.find_all("li", class_=re.compile(r"jobs-search-results__list-item"))
@@ -146,6 +154,9 @@ def _parse_job_cards(soup: BeautifulSoup, keyword: str) -> list[dict]:
                 location = span.get_text(strip=True) if span else location_el.get_text(strip=True)
             if not location:
                 location = "Unknown Location"
+
+            if is_remote and "remote" not in location.lower() and "wfh" not in location.lower():
+                location = f"{location} (Remote)" if location != "Unknown Location" else "Remote"
 
             # Debug Fallback: Log raw HTML if title could not be resolved
             if title == "Unknown Title":
@@ -249,22 +260,24 @@ def _scroll_page(driver, scrolls: int = 3):
 # ── Public entrypoints ─────────────────────────────────────────────────
 
 def scrape_all_keywords(keywords: List[str], on_new_job=None) -> None:
-    """Single pass through all keywords as a guest user."""
+    """Single pass through all keywords across Bangalore and Remote as a guest user."""
     driver = get_driver()
 
     for idx, keyword in enumerate(keywords):
-        url = _build_search_url(keyword)
-        driver.get(url)
-        time.sleep(random.uniform(3, 6))
+        for url, is_remote in _build_search_urls(keyword):
+            loc_label = "Remote" if is_remote else "Bangalore"
+            driver.get(url)
+            time.sleep(random.uniform(3, 6))
 
-        _scroll_page(driver, scrolls=random.randint(3, 5))
+            _scroll_page(driver, scrolls=random.randint(3, 5))
 
-        soup = BeautifulSoup(driver.page_source, "lxml")
-        jobs = _parse_job_cards(soup, keyword)
-        print(f"  {keyword}: {len(jobs)} candidate(s)")
-        _apply_time_filter(jobs, on_new_job)
+            soup = BeautifulSoup(driver.page_source, "lxml")
+            jobs = _parse_job_cards(soup, keyword, is_remote=is_remote)
+            print(f"  {keyword} ({loc_label}): {len(jobs)} candidate(s)")
+            _apply_time_filter(jobs, on_new_job)
 
-        enforce_tab_limit(2)
+            enforce_tab_limit(2)
+            time.sleep(random.uniform(2, 4))
 
         if idx < len(keywords) - 1:
             time.sleep(random.uniform(SEARCH_DELAY_MIN, SEARCH_DELAY_MAX))
@@ -274,28 +287,31 @@ def scrape_all_keywords(keywords: List[str], on_new_job=None) -> None:
 
 def startup_sweep(keywords: List[str], on_new_job=None) -> None:
     """
-    One-time 24-hour sweep on startup: search each keyword once with
-    STARTUP_TIME_FILTER (r86400) and STARTUP_MAX_JOB_AGE_HOURS (24h).
+    One-time 24-hour sweep on startup across Bangalore and Remote:
+    search each keyword with STARTUP_TIME_FILTER (r86400) and STARTUP_MAX_JOB_AGE_HOURS (24h).
     """
     print("\n  === STARTUP SWEEP (24h catch-up) ===")
     driver = get_driver()
 
     for idx, keyword in enumerate(keywords):
-        url = _build_search_url(keyword, time_filter=STARTUP_TIME_FILTER)
-        driver.get(url)
-        time.sleep(random.uniform(3, 6))
+        for url, is_remote in _build_search_urls(keyword, time_filter=STARTUP_TIME_FILTER):
+            loc_label = "Remote" if is_remote else "Bangalore"
+            driver.get(url)
+            time.sleep(random.uniform(3, 6))
 
-        _scroll_page(driver, scrolls=random.randint(3, 5))
+            _scroll_page(driver, scrolls=random.randint(3, 5))
 
-        soup = BeautifulSoup(driver.page_source, "lxml")
-        jobs = _parse_job_cards(soup, keyword)
-        print(f"  {keyword}: {len(jobs)} candidate(s) (24h)")
-        _apply_time_filter(jobs, on_new_job, max_age_hours=STARTUP_MAX_JOB_AGE_HOURS)
+            soup = BeautifulSoup(driver.page_source, "lxml")
+            jobs = _parse_job_cards(soup, keyword, is_remote=is_remote)
+            print(f"  {keyword} ({loc_label}): {len(jobs)} candidate(s) (24h)")
+            _apply_time_filter(jobs, on_new_job, max_age_hours=STARTUP_MAX_JOB_AGE_HOURS)
 
-        enforce_tab_limit(2)
+            enforce_tab_limit(2)
+            time.sleep(random.uniform(2, 4))
 
         if idx < len(keywords) - 1:
             time.sleep(random.uniform(SEARCH_DELAY_MIN, SEARCH_DELAY_MAX))
 
     reset_driver()
     print("  === STARTUP SWEEP COMPLETE ===\n")
+

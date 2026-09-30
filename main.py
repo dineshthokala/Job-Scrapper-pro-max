@@ -42,6 +42,7 @@ from config import (
     ENABLE_A16Z,
     ENABLE_FOUNDIT,
     ENABLE_JOOBLE,
+    ENABLE_OFFCAMPUSJOBDRIVES,
     RUN_INTERVAL,
     SEARCH_KEYWORDS,
 )
@@ -193,9 +194,11 @@ def _run_linkedin(notify):
         reset_driver()
 
 
-def _run_selenium_group(notify):
+def _run_selenium_group(notify, active_sources=None):
     """Thread 2: Internshala → Naukri (Selenium)."""
-    if ENABLE_INTERNSHALA:
+    should_run = lambda name, enabled: enabled and (active_sources is None or name in active_sources)
+
+    if should_run("Internshala", ENABLE_INTERNSHALA):
         _log("--- [Internshala] ---")
         try:
             from internshala_scraper import scrape_all_keywords
@@ -205,7 +208,7 @@ def _run_selenium_group(notify):
             from driver import reset_driver
             reset_driver()
 
-    if ENABLE_NAUKRI:
+    if should_run("Naukri", ENABLE_NAUKRI):
         _log("--- [Naukri] ---")
         try:
             from naukri_scraper import scrape_all_keywords
@@ -215,7 +218,7 @@ def _run_selenium_group(notify):
             from driver import reset_driver
             reset_driver()
 
-    if ENABLE_HIRIST:
+    if should_run("Hirist", ENABLE_HIRIST):
         _log("--- [Hirist] ---")
         try:
             from scrapers.hirist import scrape_all_keywords
@@ -225,7 +228,7 @@ def _run_selenium_group(notify):
             from driver import reset_driver
             reset_driver()
 
-    if ENABLE_FOUNDIT:
+    if should_run("Foundit", ENABLE_FOUNDIT):
         _log("--- [Foundit] ---")
         try:
             from scrapers.foundit import scrape_all_keywords
@@ -260,15 +263,18 @@ _HTTP_SCRAPERS = [
     (ENABLE_WEWORKREMOTELY, "scrapers.weworkremotely", "WeWorkRemotely"),
     (ENABLE_A16Z,           "scrapers.a16z",           "jobs.a16z"),
     (ENABLE_JOOBLE,         "scrapers.jooble",         "Jooble"),
+    (ENABLE_OFFCAMPUSJOBDRIVES, "scrapers.offcampusjobdrives", "OffCampusJobDrives"),
 ]
 
 
-def _run_http_scrapers(notify):
+def _run_http_scrapers(notify, active_sources=None):
     """Thread 3: All lightweight HTTP-based scrapers (no Selenium)."""
     import importlib
 
     for enabled, module_path, label in _HTTP_SCRAPERS:
         if not enabled:
+            continue
+        if active_sources is not None and label not in active_sources:
             continue
         _log(f"--- [{label}] ---")
         try:
@@ -336,13 +342,13 @@ def run_scrape_cycle(sources=None):
         # Thread 2: Selenium group (Internshala + Naukri + Hirist + Foundit)
         sel_active = [s for s in active if s in ("Internshala", "Naukri", "Hirist", "Foundit")]
         if sel_active:
-            t = threading.Thread(target=_run_selenium_group, args=(sel_notify,), name="Selenium", daemon=True)
+            t = threading.Thread(target=_run_selenium_group, args=(sel_notify, sel_active), name="Selenium", daemon=True)
             threads.append(t)
 
         # Thread 3: HTTP scrapers
         http_active = [s for s in active if s not in ("LinkedIn", "Internshala", "Naukri", "Hirist", "Foundit")]
         if http_active:
-            t = threading.Thread(target=_run_http_scrapers, args=(http_notify,), name="HTTP", daemon=True)
+            t = threading.Thread(target=_run_http_scrapers, args=(http_notify, http_active), name="HTTP", daemon=True)
             threads.append(t)
 
 

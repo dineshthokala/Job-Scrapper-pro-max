@@ -9,12 +9,15 @@ import re
 from scrapers.base import delay, fetch_soup, get_session, make_job, safe_text
 
 
-def _build_url(keyword):
+def _build_urls(keyword):
     q = keyword.replace(" ", "+")
-    return f"https://www.ziprecruiter.com/jobs-search?search={q}&location=Bangalore%2C+India&days=1"
+    return [
+        (f"https://www.ziprecruiter.com/jobs-search?search={q}&location=Bangalore%2C+India&days=1", False),
+        (f"https://www.ziprecruiter.com/jobs-search?search={q}&location=Remote&days=1", True),
+    ]
 
 
-def _parse_jobs(soup, keyword):
+def _parse_jobs(soup, keyword, is_remote=False):
     jobs = []
 
     cards = (
@@ -52,7 +55,9 @@ def _parse_jobs(soup, keyword):
             company = safe_text(comp_el, "Unknown Company")
 
             loc_el = card.find("span", class_=re.compile(r"location"))
-            location = safe_text(loc_el, "Bangalore")
+            location = safe_text(loc_el, "Remote" if is_remote else "Bangalore")
+            if is_remote and "remote" not in location.lower() and "wfh" not in location.lower():
+                location = f"{location} (Remote)"
 
             job = make_job("zr", str(jid), title, company, location, url, keyword, "ZipRecruiter")
             if job:
@@ -69,20 +74,21 @@ def scrape_all_keywords(keywords, on_new_job=None):
     session = get_session()
 
     for keyword in keywords:
-        url = _build_url(keyword)
-        soup = fetch_soup(url, session=session)
-        if not soup:
-            continue
+        for url, is_remote in _build_urls(keyword):
+            soup = fetch_soup(url, session=session)
+            if not soup:
+                continue
 
-        jobs = _parse_jobs(soup, keyword)
-        print(f"  {keyword}: {len(jobs)} job(s) [ZipRecruiter]")
+            jobs = _parse_jobs(soup, keyword, is_remote=is_remote)
+            loc_label = "Remote" if is_remote else "Bangalore"
+            print(f"  {keyword} ({loc_label}): {len(jobs)} job(s) [ZipRecruiter]")
 
-        for job in jobs:
-            if on_new_job:
-                on_new_job(job)
-            else:
-                all_jobs.append(job)
+            for job in jobs:
+                if on_new_job:
+                    on_new_job(job)
+                else:
+                    all_jobs.append(job)
 
-        delay(2.0, 4.0)
+            delay(2.0, 4.0)
 
     return all_jobs

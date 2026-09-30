@@ -173,11 +173,24 @@ def parse_age_hours(text):
 
 # ── Job filters ────────────────────────────────────────────────────────
 
-VALID_LOCATIONS = [
-    "bangalore", "bengaluru",
-    "remote", "work from home", "wfh", "anywhere", "hybrid",
-    "india",  # remote-india positions
+BANGALORE_LOCATIONS = ["bangalore", "bengaluru", "blr"]
+REMOTE_LOCATIONS = [
+    "remote", "work from home", "wfh", "anywhere", "telecommute",
+    "virtual",
 ]
+
+
+def is_valid_location(location: str) -> bool:
+    """
+    Check if a location represents Bengaluru/Bangalore or a Remote/WFH position.
+    Strictly excludes other on-site cities (Pune, Mumbai, Hyderabad, Gurgaon, Noida, etc.).
+    """
+    if not location:
+        return True
+    loc_lower = location.lower()
+    is_bangalore = any(b in loc_lower for b in BANGALORE_LOCATIONS)
+    is_remote = any(r in loc_lower for r in REMOTE_LOCATIONS)
+    return is_bangalore or is_remote
 
 
 def passes_filters(title, company, card_text=None, location=None):
@@ -185,11 +198,11 @@ def passes_filters(title, company, card_text=None, location=None):
     title_lower = title.lower()
     if any(kw in title_lower for kw in BLACKLISTED_TITLE_KEYWORDS):
         return False, f"{title}"
-    if not any(term in title_lower for term in RELEVANT_TITLE_TERMS):
+    if not any(re.search(r"\b" + re.escape(term) + r"\b", title_lower) for term in RELEVANT_TITLE_TERMS):
         return False, f"{title} (irrelevant)"
     if any(bl.lower() in company.lower() for bl in BLACKLISTED_COMPANIES):
         return False, f"{company} (blacklisted)"
-    if location and not any(loc in location.lower() for loc in VALID_LOCATIONS):
+    if location and not is_valid_location(location):
         return False, f"{title} (location: {location})"
     if card_text:
         age = parse_age_hours(card_text.lower())

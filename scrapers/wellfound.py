@@ -9,12 +9,15 @@ import re
 from scrapers.base import delay, fetch_soup, get_session, make_job, safe_text
 
 
-def _build_url(keyword):
+def _build_urls(keyword):
     slug = keyword.lower().replace(" ", "-")
-    return f"https://wellfound.com/role/l/{slug}/india"
+    return [
+        (f"https://wellfound.com/role/l/{slug}/bangalore", False),
+        (f"https://wellfound.com/role/l/{slug}/remote", True),
+    ]
 
 
-def _parse_jobs(soup, keyword):
+def _parse_jobs(soup, keyword, is_remote=False):
     jobs = []
 
     # Wellfound renders job cards in various formats
@@ -52,8 +55,10 @@ def _parse_jobs(soup, keyword):
                 jid = m.group(1) if m else hashlib.md5((company + title).encode()).hexdigest()[:12]
 
                 # Location — try to find in surrounding context
-                loc_el = card.find("span", string=re.compile(r"Bangalore|Bengaluru|Remote|India", re.I))
-                location = safe_text(loc_el, "India")
+                loc_el = card.find("span", string=re.compile(r"Bangalore|Bengaluru|Remote|Hybrid", re.I))
+                location = safe_text(loc_el, "Remote" if is_remote else "Bangalore")
+                if is_remote and "remote" not in location.lower() and "wfh" not in location.lower():
+                    location = f"{location} (Remote)"
 
                 job = make_job("wf", jid, title, company, location, url, keyword, "Wellfound")
                 if job:
@@ -70,20 +75,21 @@ def scrape_all_keywords(keywords, on_new_job=None):
     session = get_session()
 
     for keyword in keywords:
-        url = _build_url(keyword)
-        soup = fetch_soup(url, session=session)
-        if not soup:
-            continue
+        for url, is_remote in _build_urls(keyword):
+            soup = fetch_soup(url, session=session)
+            if not soup:
+                continue
 
-        jobs = _parse_jobs(soup, keyword)
-        print(f"  {keyword}: {len(jobs)} job(s) [Wellfound]")
+            jobs = _parse_jobs(soup, keyword, is_remote=is_remote)
+            loc_label = "Remote" if is_remote else "Bangalore"
+            print(f"  {keyword} ({loc_label}): {len(jobs)} job(s) [Wellfound]")
 
-        for job in jobs:
-            if on_new_job:
-                on_new_job(job)
-            else:
-                all_jobs.append(job)
+            for job in jobs:
+                if on_new_job:
+                    on_new_job(job)
+                else:
+                    all_jobs.append(job)
 
-        delay(2.0, 4.0)
+            delay(2.0, 4.0)
 
     return all_jobs

@@ -5,7 +5,7 @@ A powerful, parallel job scraping tool for **18 different job portals** (LinkedI
 ## Features
 
 - **Web Dashboard** — A modern, dark-themed UI at `http://localhost:5000` to view, filter, sort, and manage all scraped jobs.
-- **18 Supported Portals** — Scrapes LinkedIn, Naukri, Internshala, Indeed, Glassdoor, Wellfound, YCombinator, Instahyre, Cutshort, Dice, CareerJet, ZipRecruiter, HiringCafe, Otta, Peerlist, Arc, Unstop, and AccioJobs.
+- **Supported Portals** — Scrapes LinkedIn, Naukri, Internshala, Indeed, Glassdoor, Wellfound, YCombinator, Instahyre, Cutshort, Dice, CareerJet, ZipRecruiter, HiringCafe, Otta, Peerlist, Arc, Unstop, AccioJobs, OneRoadmap, Hirist, WeWorkRemotely, jobs.a16z, Foundit, Jooble, and OffCampusJobDrives.
 - **Parallel Scraping** — Runs multiple scrapers concurrently (Selenium for heavy sites, lightweight HTTP requests for others).
 - **SQLite Database** — All jobs and your application statuses are saved to `jobs.db`.
 - **Instant Discord Alerts** — Jobs are sent to a Discord channel the moment they're found.

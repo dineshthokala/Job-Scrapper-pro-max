@@ -9,12 +9,12 @@ import re
 from scrapers.base import delay, fetch_soup, get_session, make_job, safe_text
 
 
-def _build_url(keyword, start=0):
+def _build_urls(keyword, start=0):
     q = keyword.replace(" ", "+")
-    return (
-        f"https://www.indeed.co.in/jobs"
-        f"?q={q}&l=Bengaluru%2C+Karnataka&fromage=1&start={start}"
-    )
+    return [
+        f"https://www.indeed.co.in/jobs?q={q}&l=Bengaluru%2C+Karnataka&fromage=1&start={start}",
+        f"https://www.indeed.co.in/jobs?q={q}&l=Remote&fromage=1&start={start}",
+    ]
 
 
 def _parse_jobs(soup, keyword):
@@ -82,7 +82,9 @@ def _parse_jobs(soup, keyword):
                 card.select_one("div[data-testid='text-location']")
                 or card.select_one("div.companyLocation")
             )
-            location = safe_text(loc_el, "Bengaluru")
+            location = safe_text(loc_el, "Remote" if is_remote else "Bengaluru")
+            if is_remote and "remote" not in location.lower() and "wfh" not in location.lower():
+                location = f"{location} (Remote)"
 
             job = make_job("ind", jk, title, company, location, url, keyword, "Indeed")
             if job:
@@ -96,23 +98,28 @@ def _parse_jobs(soup, keyword):
 
 def scrape_all_keywords(keywords, on_new_job=None):
     all_jobs = []
+    seen_ids = set()
     session = get_session()
 
     for keyword in keywords:
-        url = _build_url(keyword)
-        soup = fetch_soup(url, session=session)
-        if not soup:
-            continue
+        kw_jobs = []
+        for url in _build_urls(keyword):
+            is_remote = "l=Remote" in url
+            soup = fetch_soup(url, session=session)
+            if not soup:
+                continue
 
-        jobs = _parse_jobs(soup, keyword)
-        print(f"  {keyword}: {len(jobs)} job(s) [Indeed]")
+            jobs = _parse_jobs(soup, keyword, is_remote=is_remote)
+            for job in jobs:
+                if job["job_id"] not in seen_ids:
+                    seen_ids.add(job["job_id"])
+                    kw_jobs.append(job)
+                    if on_new_job:
+                        on_new_job(job)
+                    else:
+                        all_jobs.append(job)
+            delay(1.5, 3.0)
 
-        for job in jobs:
-            if on_new_job:
-                on_new_job(job)
-            else:
-                all_jobs.append(job)
-
-        delay(1.5, 3.0)
+        print(f"  {keyword}: {len(kw_jobs)} job(s) [Indeed] (Bengaluru + Remote)")
 
     return all_jobs

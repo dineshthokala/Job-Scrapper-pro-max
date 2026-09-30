@@ -59,6 +59,10 @@ def _search_jobs(keyword, session):
             else:
                 location = "Remote"
 
+            is_remote_flag = bool(item.get("isRemote")) or bool(item.get("workFromHomeAvailability"))
+            if is_remote_flag and "remote" not in location.lower() and "wfh" not in location.lower():
+                location = f"{location} (Remote)"
+
             job = make_job("dice", str(jid), title, company, location, url, keyword, "Dice")
             if job:
                 jobs.append(job)

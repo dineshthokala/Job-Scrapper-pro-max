@@ -9,12 +9,15 @@ import re
 from scrapers.base import delay, fetch_soup, get_session, make_job, safe_text
 
 
-def _build_url(keyword):
+def _build_urls(keyword):
     slug = keyword.lower().replace(" ", "-")
-    return f"https://cutshort.io/jobs/{slug}-jobs-in-bangalore"
+    return [
+        f"https://cutshort.io/jobs/{slug}-jobs-in-bangalore",
+        f"https://cutshort.io/jobs/remote-{slug}-jobs",
+    ]
 
 
-def _parse_jobs(soup, keyword):
+def _parse_jobs(soup, keyword, is_remote=False):
     jobs = []
 
     cards = (
@@ -46,7 +49,9 @@ def _parse_jobs(soup, keyword):
 
             # Location
             loc_el = card.find("span", class_=re.compile(r"location"))
-            location = safe_text(loc_el, "Bangalore")
+            location = safe_text(loc_el, "Remote" if is_remote else "Bangalore")
+            if is_remote and "remote" not in location.lower() and "wfh" not in location.lower():
+                location = f"{location} (Remote)"
 
             job = make_job("cs", jid, title, company, location, url, keyword, "Cutshort")
             if job:
@@ -60,23 +65,28 @@ def _parse_jobs(soup, keyword):
 
 def scrape_all_keywords(keywords, on_new_job=None):
     all_jobs = []
+    seen_ids = set()
     session = get_session()
 
     for keyword in keywords:
-        url = _build_url(keyword)
-        soup = fetch_soup(url, session=session)
-        if not soup:
-            continue
+        kw_jobs = []
+        for url in _build_urls(keyword):
+            is_remote = "remote-" in url
+            soup = fetch_soup(url, session=session)
+            if not soup:
+                continue
 
-        jobs = _parse_jobs(soup, keyword)
-        print(f"  {keyword}: {len(jobs)} job(s) [Cutshort]")
+            jobs = _parse_jobs(soup, keyword, is_remote=is_remote)
+            for job in jobs:
+                if job["job_id"] not in seen_ids:
+                    seen_ids.add(job["job_id"])
+                    kw_jobs.append(job)
+                    if on_new_job:
+                        on_new_job(job)
+                    else:
+                        all_jobs.append(job)
+            delay(1.5, 3.0)
 
-        for job in jobs:
-            if on_new_job:
-                on_new_job(job)
-            else:
-                all_jobs.append(job)
-
-        delay(2.0, 3.5)
+        print(f"  {keyword}: {len(kw_jobs)} job(s) [Cutshort] (Bangalore + Remote)")
 
     return all_jobs

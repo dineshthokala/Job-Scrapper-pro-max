@@ -18,19 +18,25 @@ from driver import enforce_tab_limit, get_driver, passes_filters
 
 # ── URL builders ───────────────────────────────────────────────────────
 
-def _jobs_url(keyword: str) -> str:
+def _jobs_urls(keyword: str) -> list[str]:
     slug = keyword.lower().replace(" ", "-")
-    return f"https://internshala.com/jobs/{slug}-jobs-in-bangalore/"
+    return [
+        f"https://internshala.com/jobs/{slug}-jobs-in-bangalore/",
+        f"https://internshala.com/jobs/work-from-home-{slug}-jobs/",
+    ]
 
 
-def _internships_url(keyword: str) -> str:
+def _internships_urls(keyword: str) -> list[str]:
     slug = keyword.lower().replace(" ", "-")
-    return f"https://internshala.com/internships/{slug}-internship-in-bangalore/"
+    return [
+        f"https://internshala.com/internships/{slug}-internship-in-bangalore/",
+        f"https://internshala.com/internships/work-from-home-{slug}-internships/",
+    ]
 
 
 # ── Jobs section parser ────────────────────────────────────────────────
 
-def _parse_jobs_cards(soup: BeautifulSoup, keyword: str) -> list[dict]:
+def _parse_jobs_cards(soup: BeautifulSoup, keyword: str, is_remote: bool = False) -> list[dict]:
     """Parse the /jobs/ section — different HTML from /internships/."""
     jobs = []
 
@@ -79,7 +85,9 @@ def _parse_jobs_cards(soup: BeautifulSoup, keyword: str) -> list[dict]:
                 or card.select_one(".location_link")
                 or card.select_one(".locations")
             )
-            location = loc_el.get_text(strip=True) if loc_el else "Bangalore"
+            location = loc_el.get_text(strip=True) if loc_el else ("Remote" if is_remote else "Bangalore")
+            if is_remote and "remote" not in location.lower() and "wfh" not in location.lower():
+                location = f"{location} (Remote)"
 
             # Posted time
             time_el = card.select_one(".status-success span, .status span, .posting-time, .job-duration-label")
@@ -110,7 +118,7 @@ def _parse_jobs_cards(soup: BeautifulSoup, keyword: str) -> list[dict]:
 
 # ── Internships section parser ─────────────────────────────────────────
 
-def _parse_internship_cards(soup: BeautifulSoup, keyword: str) -> list[dict]:
+def _parse_internship_cards(soup: BeautifulSoup, keyword: str, is_remote: bool = False) -> list[dict]:
     """Parse the /internships/ section."""
     jobs = []
 
@@ -145,7 +153,9 @@ def _parse_internship_cards(soup: BeautifulSoup, keyword: str) -> list[dict]:
             loc_el = card.select_one("#location_names a, .locations a, .location_link")
             if not loc_el:
                 loc_el = card.select_one("#location_names, .locations")
-            location = loc_el.get_text(strip=True) if loc_el else "Bangalore"
+            location = loc_el.get_text(strip=True) if loc_el else ("Remote" if is_remote else "Bangalore")
+            if is_remote and "remote" not in location.lower() and "wfh" not in location.lower():
+                location = f"{location} (Remote)"
 
             time_el = card.select_one(".status-success span, .status span, .posting-time")
             card_text = time_el.get_text(strip=True) if time_el else ""
@@ -178,52 +188,47 @@ def _parse_internship_cards(soup: BeautifulSoup, keyword: str) -> list[dict]:
 def scrape_all_keywords(keywords: list, batch_size: int = 2, on_new_job=None) -> list:
     """
     For each keyword, scrape both:
-      1. /jobs/   section (full-time jobs)
-      2. /internships/ section (internships)
+      1. /jobs/ section (full-time jobs in Bangalore + Work From Home)
+      2. /internships/ section (internships in Bangalore + Work From Home)
 
-    Opens two tabs per keyword (one for jobs, one for internships),
-    deduplicates by job_id, then notifies via on_new_job callback.
+    Deduplicates by job_id, then notifies via on_new_job callback.
     """
     all_jobs = []
     seen_ids: set = set()
     driver = get_driver()
 
     for keyword in keywords:
-        jobs_url = _jobs_url(keyword)
-        interns_url = _internships_url(keyword)
+        j_urls = _jobs_urls(keyword)
+        i_urls = _internships_urls(keyword)
 
         try:
-            # Tab 0: jobs section
-            driver.get(jobs_url)
-            # Tab 1: internships section
-            driver.switch_to.new_window("tab")
-            driver.get(interns_url)
-            time.sleep(2)
-
             keyword_jobs = []
 
-            # Parse jobs tab
-            driver.switch_to.window(driver.window_handles[0])
-            for _ in range(3):
-                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(0.5)
-            soup = BeautifulSoup(driver.page_source, "lxml")
-            found_jobs = _parse_jobs_cards(soup, keyword)
-            keyword_jobs.extend(found_jobs)
+            # 1. Scrape full-time jobs (Bangalore + Work From Home)
+            for j_url, is_remote in j_urls:
+                try:
+                    driver.get(j_url)
+                    time.sleep(2)
+                    for _ in range(3):
+                        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                        time.sleep(0.4)
+                    soup = BeautifulSoup(driver.page_source, "lxml")
+                    keyword_jobs.extend(_parse_jobs_cards(soup, keyword, is_remote=is_remote))
+                except Exception as ex:
+                    print(f"  [WARN] Internshala jobs failed for {j_url}: {ex}")
 
-            # Parse internships tab
-            driver.switch_to.window(driver.window_handles[1])
-            for _ in range(3):
-                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(0.5)
-            soup = BeautifulSoup(driver.page_source, "lxml")
-            found_interns = _parse_internship_cards(soup, keyword)
-            keyword_jobs.extend(found_interns)
-
-            # Close internship tab, keep jobs tab as base
-            driver.switch_to.window(driver.window_handles[1])
-            driver.close()
-            driver.switch_to.window(driver.window_handles[0])
+            # 2. Scrape internships (Bangalore + Work From Home)
+            for i_url, is_remote in i_urls:
+                try:
+                    driver.get(i_url)
+                    time.sleep(2)
+                    for _ in range(3):
+                        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                        time.sleep(0.4)
+                    soup = BeautifulSoup(driver.page_source, "lxml")
+                    keyword_jobs.extend(_parse_internship_cards(soup, keyword, is_remote=is_remote))
+                except Exception as ex:
+                    print(f"  [WARN] Internshala internships failed for {i_url}: {ex}")
 
             # Dedup and notify
             new_count = 0
@@ -237,9 +242,7 @@ def scrape_all_keywords(keywords: list, batch_size: int = 2, on_new_job=None) ->
                 else:
                     all_jobs.append(job)
 
-            print(f"  [Internshala] {keyword}: "
-                  f"{len(found_jobs)} job(s) + {len(found_interns)} internship(s) "
-                  f"= {new_count} new")
+            print(f"  [Internshala] {keyword}: {len(keyword_jobs)} candidate(s) = {new_count} new")
             enforce_tab_limit(2)
 
         except Exception as e:

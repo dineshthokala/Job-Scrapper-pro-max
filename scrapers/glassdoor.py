@@ -10,12 +10,15 @@ import re
 from scrapers.base import delay, fetch_soup, get_session, make_job, safe_text
 
 
-def _build_url(keyword):
+def _build_urls(keyword):
     slug = keyword.lower().replace(" ", "-")
-    return f"https://www.glassdoor.co.in/Job/bangalore-{slug}-jobs-SRCH_IL.0,9_IC2940587_KO10,{10 + len(slug)}.htm"
+    return [
+        f"https://www.glassdoor.co.in/Job/bangalore-{slug}-jobs-SRCH_IL.0,9_IC2940587_KO10,{10 + len(slug)}.htm",
+        f"https://www.glassdoor.co.in/Job/remote-{slug}-jobs-SRCH_KO0,{7 + len(slug)}.htm",
+    ]
 
 
-def _parse_jobs(soup, keyword):
+def _parse_jobs(soup, keyword, is_remote=False):
     jobs = []
 
     cards = (
@@ -56,7 +59,9 @@ def _parse_jobs(soup, keyword):
                 card.find("div", attrs={"data-test": "emp-location"})
                 or card.find("span", class_=re.compile(r"location"))
             )
-            location = safe_text(loc_el, "Bangalore")
+            location = safe_text(loc_el, "Remote" if is_remote else "Bangalore")
+            if is_remote and "remote" not in location.lower() and "wfh" not in location.lower():
+                location = f"{location} (Remote)"
 
             job = make_job("gd", jid, title, company, location, url, keyword, "Glassdoor")
             if job:
@@ -70,23 +75,28 @@ def _parse_jobs(soup, keyword):
 
 def scrape_all_keywords(keywords, on_new_job=None):
     all_jobs = []
+    seen_ids = set()
     session = get_session()
 
     for keyword in keywords:
-        url = _build_url(keyword)
-        soup = fetch_soup(url, session=session)
-        if not soup:
-            continue
+        kw_jobs = []
+        for url in _build_urls(keyword):
+            is_remote = "remote-" in url
+            soup = fetch_soup(url, session=session)
+            if not soup:
+                continue
 
-        jobs = _parse_jobs(soup, keyword)
-        print(f"  {keyword}: {len(jobs)} job(s) [Glassdoor]")
+            jobs = _parse_jobs(soup, keyword, is_remote=is_remote)
+            for job in jobs:
+                if job["job_id"] not in seen_ids:
+                    seen_ids.add(job["job_id"])
+                    kw_jobs.append(job)
+                    if on_new_job:
+                        on_new_job(job)
+                    else:
+                        all_jobs.append(job)
+            delay(2.0, 3.5)
 
-        for job in jobs:
-            if on_new_job:
-                on_new_job(job)
-            else:
-                all_jobs.append(job)
-
-        delay(3.0, 5.0)
+        print(f"  {keyword}: {len(kw_jobs)} job(s) [Glassdoor] (Bangalore + Remote)")
 
     return all_jobs

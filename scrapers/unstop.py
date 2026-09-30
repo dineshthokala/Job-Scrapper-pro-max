@@ -10,7 +10,7 @@ import re
 from scrapers.base import delay, fetch_json, fetch_soup, get_session, make_job, safe_text
 
 
-def _search_api(keyword, session):
+def _search_api(keyword, session, extra_params=None, is_remote=False):
     """Try Unstop's public search API first."""
     url = "https://unstop.com/api/public/opportunity/search/new"
     params = {
@@ -18,8 +18,9 @@ def _search_api(keyword, session):
         "per_page": "20",
         "oppstatus": "open",
         "quickSearch": keyword,
-        "city": "Bangalore",
     }
+    if extra_params:
+        params.update(extra_params)
     data = fetch_json(url, session=session, params=params)
     if not data:
         return None  # signal to fall back to HTML
@@ -45,7 +46,19 @@ def _search_api(keyword, session):
                 city = item["city"][0] if isinstance(item["city"][0], str) else item["city"][0].get("name", "")
             elif isinstance(item.get("city"), str):
                 city = item["city"]
-            location = city or "India"
+
+            is_job_remote = (
+                is_remote
+                or item.get("job_type") == "work_from_home"
+                or item.get("work_type") == "remote"
+                or bool(item.get("is_work_from_home"))
+                or "remote" in str(item.get("filters", "")).lower()
+            )
+
+            if is_job_remote:
+                location = f"{city} (Remote)" if city else "Remote"
+            else:
+                location = city or "Bangalore"
 
             job = make_job("us", jid, title, company, location, url, keyword, "Unstop")
             if job:
@@ -57,7 +70,7 @@ def _search_api(keyword, session):
     return jobs
 
 
-def _parse_html(soup, keyword):
+def _parse_html(soup, keyword, is_remote=False):
     """Fallback HTML parser."""
     jobs = []
     cards = (
@@ -86,7 +99,9 @@ def _parse_html(soup, keyword):
             company = safe_text(comp_el, "Unknown Company")
 
             loc_el = card.find("span", class_=re.compile(r"location|city"))
-            location = safe_text(loc_el, "India")
+            location = safe_text(loc_el, "Remote" if is_remote else "Bangalore")
+            if is_remote and "remote" not in location.lower() and "wfh" not in location.lower():
+                location = f"{location} (Remote)"
 
             job = make_job("us", jid, title, company, location, url, keyword, "Unstop")
             if job:
@@ -102,22 +117,29 @@ def scrape_all_keywords(keywords, on_new_job=None):
     all_jobs = []
     session = get_session()
 
+    search_targets = [
+        ({"city": "Bangalore"}, "https://unstop.com/jobs?keyword={q}&city=Bangalore", "Bangalore", False),
+        ({"work_from_home": "1"}, "https://unstop.com/jobs?keyword={q}&work_from_home=1", "Remote", True),
+    ]
+
     for keyword in keywords:
-        # Try API first, fall back to HTML
-        jobs = _search_api(keyword, session)
-        if jobs is None:
-            url = f"https://unstop.com/jobs?keyword={keyword.replace(' ', '+')}&city=Bangalore"
-            soup = fetch_soup(url, session=session)
-            jobs = _parse_html(soup, keyword) if soup else []
+        q = keyword.replace(" ", "+")
+        for extra_params, html_tmpl, label, is_remote in search_targets:
+            # Try API first, fall back to HTML
+            jobs = _search_api(keyword, session, extra_params=extra_params, is_remote=is_remote)
+            if jobs is None:
+                url = html_tmpl.format(q=q)
+                soup = fetch_soup(url, session=session)
+                jobs = _parse_html(soup, keyword, is_remote=is_remote) if soup else []
 
-        print(f"  {keyword}: {len(jobs)} job(s) [Unstop]")
+            print(f"  {keyword} ({label}): {len(jobs)} job(s) [Unstop]")
 
-        for job in jobs:
-            if on_new_job:
-                on_new_job(job)
-            else:
-                all_jobs.append(job)
+            for job in jobs:
+                if on_new_job:
+                    on_new_job(job)
+                else:
+                    all_jobs.append(job)
 
-        delay(1.5, 3.0)
+            delay(1.5, 3.0)
 
     return all_jobs

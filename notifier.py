@@ -32,6 +32,7 @@ SOURCE_COLORS = {
     "jobs.a16z":    0x1E293B,
     "Foundit":      0x7C3AED,
     "Jooble":       0x2196F3,
+    "OffCampusJobDrives": 0x1B78E2,
 }
 
 

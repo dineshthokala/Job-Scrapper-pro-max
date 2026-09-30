@@ -9,9 +9,12 @@ import re
 from scrapers.base import delay, fetch_soup, get_session, make_job, safe_text
 
 
-def _build_url(keyword, page=1):
+def _build_urls(keyword, page=1):
     q = keyword.replace(" ", "+")
-    return f"https://www.careerjet.co.in/search/jobs?s={q}&l=bangalore&radius=30&p={page}"
+    return [
+        f"https://www.careerjet.co.in/search/jobs?s={q}&l=bangalore&radius=30&p={page}",
+        f"https://www.careerjet.co.in/search/jobs?s={q}&l=remote&p={page}",
+    ]
 
 
 def _parse_jobs(soup, keyword):
@@ -56,23 +59,27 @@ def _parse_jobs(soup, keyword):
 
 def scrape_all_keywords(keywords, on_new_job=None):
     all_jobs = []
+    seen_ids = set()
     session = get_session()
 
     for keyword in keywords:
-        url = _build_url(keyword)
-        soup = fetch_soup(url, session=session)
-        if not soup:
-            continue
+        kw_jobs = []
+        for url in _build_urls(keyword):
+            soup = fetch_soup(url, session=session)
+            if not soup:
+                continue
 
-        jobs = _parse_jobs(soup, keyword)
-        print(f"  {keyword}: {len(jobs)} job(s) [CareerJet]")
+            jobs = _parse_jobs(soup, keyword)
+            for job in jobs:
+                if job["job_id"] not in seen_ids:
+                    seen_ids.add(job["job_id"])
+                    kw_jobs.append(job)
+                    if on_new_job:
+                        on_new_job(job)
+                    else:
+                        all_jobs.append(job)
+            delay(1.0, 2.0)
 
-        for job in jobs:
-            if on_new_job:
-                on_new_job(job)
-            else:
-                all_jobs.append(job)
-
-        delay(1.0, 2.5)
+        print(f"  {keyword}: {len(kw_jobs)} job(s) [CareerJet] (Bangalore + Remote)")
 
     return all_jobs
